@@ -10,10 +10,14 @@ from datetime import timedelta
 import os
 from dotenv import load_dotenv
 from utils.email_utlis import send_phone_number_verification_email_utils
+from models.code_validation_models import PhoneEmailVerificationCode
+from datetime import datetime, timezone
+import random
 
 load_dotenv()
 
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+PHONE_EMAIL_CODE_EXPIRE_MINUTES = int(os.getenv("PHONE_EMAIL_CODE_EXPIRE_MINUTES", "10"))
 
 class UserService:
     """Service class for user CRUD operations and business logic"""
@@ -136,15 +140,45 @@ class UserService:
         return access_token, refresh_token
 
     def get_phone_number_verification_email_code(self, phone_number: str, email: str) -> str:
-        # TODO: Create a token for the phone number verification
-        code = '123456'
+        # Generate a 6-digit numeric code
+        code = f"{random.randint(0, 999999):06d}"
+
+        created_at = datetime.now(timezone.utc)
+        expires_at = created_at + timedelta(minutes=PHONE_EMAIL_CODE_EXPIRE_MINUTES)
+
+        # Persist the verification record
+        verification = PhoneEmailVerificationCode(
+            email=email,
+            phone_number=phone_number,
+            code=code,
+            created_at=created_at,
+            expires_at=expires_at,
+        )
+        self.db.add(verification)
+        self.db.commit()
+
+        # Send the code via email
+        send_phone_number_verification_email_utils(email, code)
         return code
 
 
     def validate_phone_number_verification_code(self, email: str, phone_number: str, code: str) -> dict:
+        now = datetime.now(timezone.utc)
+        verification = (
+            self.db.query(PhoneEmailVerificationCode)
+            .filter(
+                PhoneEmailVerificationCode.email == email,
+                PhoneEmailVerificationCode.phone_number == phone_number,
+                PhoneEmailVerificationCode.code == code,
+                PhoneEmailVerificationCode.expires_at > now,
+                PhoneEmailVerificationCode.used_at.is_(None),
+            )
+            .order_by(PhoneEmailVerificationCode.created_at.desc())
+            .first()
+        )
 
-        if code != '123456':
-            return None
+        if not verification:
+            return {"error": "Invalid or expired code"}
         
         user_service = UserService(self.db)
         user = user_service.get_user_by_email(email)
@@ -173,6 +207,9 @@ class UserService:
         # Create a phone number for the user if it does not exist yet
         new_phone = UserPhone(phone=phone_number, user_id=user.id, is_verified=True)
         self.db.add(new_phone)
+
+        # mark verification as used
+        verification.used_at = now
         self.db.commit()
         self.db.refresh(new_phone)
 

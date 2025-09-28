@@ -5,10 +5,10 @@ from langgraph.types import interrupt
 from langgraph.prebuilt import InjectedState
 from typing import Annotated
 from langchain_core.messages import AnyMessage
-\
+import os
 import httpx
 
-BACKEND_URL = "http://127.0.0.1:8001"
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8001")
 
 class State(MessagesState):
     remaining_steps: int
