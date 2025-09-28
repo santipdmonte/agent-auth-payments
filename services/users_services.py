@@ -1,7 +1,7 @@
 from schemas.users_schemas import UserUpdate
 from fastapi import Depends
 from database import get_db
-from models.users_models import User, UserRole, UserSocialAccount
+from models.users_models import User, UserRole, UserSocialAccount, UserPhone
 from sqlalchemy.orm import Session
 from models.users_models import AuthProviderType
 from uuid import UUID
@@ -9,6 +9,7 @@ from services.tokens_service import get_token_service, TokenService
 from datetime import timedelta
 import os
 from dotenv import load_dotenv
+from utils.email_utlis import send_phone_number_verification_email_utils
 
 load_dotenv()
 
@@ -39,8 +40,18 @@ class UserService:
     def get_user_by_email(self, email: str):
         return self.db.query(User).filter(User.email == email).first()
 
+    def get_user_by_phone_number(self, phone_number: str):
+        return (
+            self.db.query(User)
+            .filter(User.phones.any(UserPhone.phone == phone_number))
+            .first()
+        )
+
     def get_all_users(self):
         return self.db.query(User).filter(User.disabled == False).all()
+
+    def get_all_phone_numbers(self):
+        return self.db.query(UserPhone).all()
 
     def update_user(self, user: User, user_update: UserUpdate):
         user_update = user_update.model_dump(exclude_unset=True)
@@ -123,6 +134,49 @@ class UserService:
         )
         refresh_token = self.token_service.create_refresh_token(data={"sub": user_info['email']})
         return access_token, refresh_token
+
+    def get_phone_number_verification_email_code(self, phone_number: str, email: str) -> str:
+        # TODO: Create a token for the phone number verification
+        code = '123456'
+        return code
+
+
+    def validate_phone_number_verification_code(self, email: str, phone_number: str, code: str) -> dict:
+
+        if code != '123456':
+            return None
+        
+        user_service = UserService(self.db)
+        user = user_service.get_user_by_email(email)
+        if not user:
+            user = User(email=email)
+            user = user_service.create_user(user)
+
+        # Check if the phone already exists
+        existing_phone = (
+            self.db.query(UserPhone)
+            .filter(UserPhone.phone == phone_number)
+            .first()
+        )
+
+        if existing_phone:
+            # If it already belongs to the same user, ensure it's verified
+            if existing_phone.user_id == user.id:
+                if not existing_phone.is_verified:
+                    existing_phone.is_verified = True
+                    self.db.commit()
+                    self.db.refresh(existing_phone)
+                return user
+            # If it belongs to another user, do not reassign to avoid UNIQUE violations
+            return {"error": "Phone number already in use by another user"}
+
+        # Create a phone number for the user if it does not exist yet
+        new_phone = UserPhone(phone=phone_number, user_id=user.id, is_verified=True)
+        self.db.add(new_phone)
+        self.db.commit()
+        self.db.refresh(new_phone)
+
+        return user
 
 # ==================== DEPENDENCY INJECTION ====================
 

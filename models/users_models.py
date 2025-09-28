@@ -58,7 +58,14 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
-    ) 
+    )
+
+    phones: Mapped[list["UserPhone"]] = relationship(
+        "UserPhone",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     def __repr__(self) -> str:
         """Representación legible del objeto."""

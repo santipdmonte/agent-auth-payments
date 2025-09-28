@@ -110,15 +110,6 @@ class TokenService:
         return jwt.encode(to_encode, self.sercret, algorithm=self.algorithm)
 
 
-    def create_phone_number_verification_code(self, data: dict) -> str:
-        # TODO: Create a token for the phone number verification
-        return '123456'
-
-    def validate_phone_number_verification_code(self, email: str, token: str) -> dict:
-        if token == '123456':
-            return True
-        return False
-
     # ==================== TOKEN VALIDATION ====================
     def validate_access_token(self, token_str: str) -> dict:
         try:

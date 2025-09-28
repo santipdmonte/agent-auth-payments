@@ -1,9 +1,10 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from models.users_models import AuthProviderType, UserRole
 from uuid import UUID
 
 class UserBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     email: str
     full_name: str | None = None
     given_name: str | None = None
@@ -19,6 +20,7 @@ class UserUpdate(BaseModel):
     picture: str | None = None
 
 class UserSocialAccountBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     user_id: UUID
     provider: AuthProviderType
     provider_id: str
@@ -34,3 +36,4 @@ class UserResponse(UserBase):
     created_at: datetime
     updated_at: datetime
     social_accounts: list[UserSocialAccountBase] | None = None
+    model_config = ConfigDict(from_attributes=True)

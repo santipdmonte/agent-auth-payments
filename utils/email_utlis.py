@@ -67,7 +67,7 @@ def send_verification_email(email: str, token: str):
         raise HTTPException(status_code=500, detail=f"Email failed: {str(e)}")
 
 
-def send_phone_number_verification_email(email: str, token: str):
+def send_phone_number_verification_email_utils(email: str, token: str):
     try:
         # Create the email content (plain + HTML alternative)
         message = MIMEMultipart("alternative")

@@ -3,14 +3,11 @@ from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt
 from langgraph.prebuilt import InjectedState
-from typing import Annotated, Optional
-from services.users_services import get_user_service
-from fastapi import Depends
-from services.tokens_service import get_token_service, TokenService
-from utils.email_utlis import send_phone_number_verification_email
-from database import get_db
+from typing import Annotated
 
-db = get_db()
+import httpx
+
+BACKEND_URL = "http://127.0.0.1:8001"
 
 class State(MessagesState):
     remaining_steps: int
@@ -77,40 +74,64 @@ cart_items = []
 
 def send_email_verification_code(
     email: str,
+    phone_number: Annotated[str | None, InjectedState("phone_number")] = None,
 ):
-    """Envía un código de verificación al email del usuario."""
-    print(f"Sending email verification code to {email}")
-    
-    token_service = TokenService(db)
-    code = token_service.create_phone_number_verification_code(data={"sub": email})
-    send_phone_number_verification_email(email, code)
+    """Envía un código de verificación al email del usuario a través del backend."""
+    if not phone_number:
+        return {"messages": "Necesito tu número de teléfono para enviar el código de verificación."}
+    try:
+        response = httpx.post(
+            f"{BACKEND_URL}/users/phone/{phone_number}/send-verification-code/{email}",
+            timeout=5.0,
+        )
+    except Exception:
+        return {"messages": "Error conectando con el backend para enviar el código"}
+    if response.status_code != 200:
+        return {"messages": "Error enviando el código de verificación"}
+    return {"messages": "Código de verificación enviado. Revisa tu email e ingresa el código."}
 
-    return {"messages": "Email de verificacion enviado correctamente. Dile al usuario que debe verificar el codigo de verificacion."}
 
-
-def verify_email_verification_code(code: str, phone_number: Annotated[str | None, InjectedState("phone_number")] = None):
-    """Verifica si el código de verificación es válido."""
-
-    token_service = TokenService(db)
-    
-    # TODO: get the email from the database with the phone number
-    email = "santiagopedemonte02@gmail.com"
-    validate_code = token_service.validate_phone_number_verification_code(email, code)
-    if not validate_code:
-        return {"messages": "Codigo de verificacion invalido"}
-
-    return {"messages": f"Email de verificacion verificado correctamente. informacion del usuario: {user_info}"}
+def verify_email_verification_code(email: str, code: str, phone_number: Annotated[str | None, InjectedState("phone_number")] = None):
+    """Verifica si el código de verificación es válido a través del backend."""
+    if not phone_number:
+        return {"messages": "Necesito tu número de teléfono para verificar el código."}
+    try:
+        response = httpx.post(
+            f"{BACKEND_URL}/users/phone/{phone_number}/verify-code/{email}",
+            params={"code": code},
+            timeout=5.0,
+        )
+    except Exception:
+        return {"messages": "Error conectando con el backend para verificar el código"}
+    if response.status_code != 200:
+        return {"messages": "Código inválido o error del backend. Intenta nuevamente."}
+    try:
+        user = response.json()
+    except Exception:
+        user = None
+    if not user:
+        return {"messages": "Código inválido."}
+    return {"messages": f"{user}"}
 
 
 def get_user_info(
     phone_number: Annotated[str | None, InjectedState("phone_number")] = None, 
 ):
     """Obtiene la información del usuario."""
-    # TODO: search in the database a user related to the phone number
-    if phone_number not in ["3413413413", "3413413414", "3413413415"]:
+    try:
+        response = httpx.get(f"{BACKEND_URL}/users/phone/{phone_number}", timeout=5.0)
+        if response.status_code == 404:
+            return {"messages": "Usuario no encontrado"}
+        if response.status_code != 200:
+            return {"messages": "Error consultando el backend"}
+        user = response.json()
+    except Exception:
+        return {"messages": "Error conectando con el backend"}
+    if not user:
         return {"messages": "El usuario no tiene un numero de telefono asociado. Porfavor, valida su email."}
     print(f"Getting user info for phone number {phone_number}")
-    return {"messages": f"{user_info}"}
+    return {"messages": f"{user}"}
+
 
 def add_item_to_cart(item: str, phone_number: Annotated[str | None, InjectedState("phone_number")] = None):
     """Agrega un item al carrito."""
@@ -120,10 +141,12 @@ def add_item_to_cart(item: str, phone_number: Annotated[str | None, InjectedStat
     cart_items.append(items[item])
     return {"messages": f"Item agregado al carrito: {item}"}
 
+
 def get_cart_items(phone_number: Annotated[str | None, InjectedState("phone_number")] = None):
     """Obtiene los items del carrito."""
     print(f"Getting cart items")
     return {"messages": f"{cart_items}"}
+
 
 def remove_item_from_cart(item: str, phone_number: Annotated[str | None, InjectedState("phone_number")] = None):
     """Elimina un item del carrito."""
@@ -133,12 +156,14 @@ def remove_item_from_cart(item: str, phone_number: Annotated[str | None, Injecte
     cart_items.remove(items[item])
     return {"messages": f"Item eliminado del carrito: {item}"}
 
+
 def get_item_price(item: str, phone_number: Annotated[str | None, InjectedState("phone_number")] = None):
     """Obtiene el precio de un item."""
     print(f"Getting item price: {item}")
     if item not in items:
         return {"messages": f"Item no encontrado: {item}. Los items disponibles son: {items.keys()}"}
     return {"messages": f"El precio del item {item} es: {items[item]['price']}"}
+
 
 def process_payment(phone_number: Annotated[str | None, InjectedState("phone_number")] = None):
     """Procesa el pago."""

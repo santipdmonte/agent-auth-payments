@@ -1,10 +1,11 @@
-from fastapi import Depends, APIRouter, HTTPException, status
+from fastapi import Depends, APIRouter, HTTPException, status, BackgroundTasks
 from typing import Annotated
 from dependencies import get_current_active_user, get_current_active_admin_user
 from schemas.users_schemas import UserUpdate, UserResponse, UserSocialAccountBase
 from services.users_services import UserService, get_user_service
 from uuid import UUID
 from models.users_models import User
+from utils.email_utlis import send_phone_number_verification_email_utils
 
 users_router = APIRouter(prefix="/users", tags=["users"])
 
@@ -32,6 +33,52 @@ async def get_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
 
+@users_router.get("/phone/")
+async def get_all_phone_numbers(
+    user_service: UserService = Depends(get_user_service),
+):
+    return user_service.get_all_phone_numbers()
+
+@users_router.get("/phone/{phone_number}", response_model=UserResponse)
+async def get_user_by_phone_number(
+    phone_number: str,
+    user_service: UserService = Depends(get_user_service),
+):
+    user = user_service.get_user_by_phone_number(phone_number)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
+
+
+@users_router.post("/phone/{phone_number}/send-verification-code/{email}")
+async def send_phone_number_verification_code(
+    phone_number: str,
+    email: str,
+    background_tasks: BackgroundTasks,
+    user_service: UserService = Depends(get_user_service),
+):
+
+    code = user_service.get_phone_number_verification_email_code(phone_number, email)
+    background_tasks.add_task(send_phone_number_verification_email_utils, email, code)
+
+    return {"message": "Verification code sent", "email": email}
+
+
+@users_router.post("/phone/{phone_number}/verify-code/{email}", response_model=UserResponse)
+async def verify_phone_number_verification_code(
+    phone_number: str,
+    email: str,
+    code: str,
+    user_service: UserService = Depends(get_user_service),
+):
+    result = user_service.validate_phone_number_verification_code(email, phone_number, code)
+    if not result:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code")
+    if isinstance(result, dict) and result.get("error"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=result["error"])
+    return result
+
+
 @users_router.delete("/{user_id}")
 async def delete_user(
     user_id: UUID,
@@ -39,7 +86,7 @@ async def delete_user(
 ):
     user = user_service.get_user(user_id)
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
     return user_service.delete_user(user)
 
 @users_router.patch("/{user_id}/admin")
@@ -49,7 +96,7 @@ async def make_user_admin(
 ):
     user = user_service.get_user(user_id)
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
     return user_service.make_user_admin(user)
 
 @users_router.get("/me/", response_model=UserResponse)
