@@ -4,7 +4,8 @@ from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt
 from langgraph.prebuilt import InjectedState
 from typing import Annotated
-
+from langchain_core.messages import AnyMessage
+\
 import httpx
 
 BACKEND_URL = "http://127.0.0.1:8001"
@@ -15,44 +16,56 @@ class State(MessagesState):
 
 model = ChatOpenAI(model="gpt-5-mini")
 
-prompt = """
+# prompt = """
+# Eres un asistente util para ayudar a un usuario.
+
+# Cuando el usuario te envie el primer mensaje, debes utilizar la tool "get_user_info" para obtener la información del usuario.
+
+# si el usuario no tiene una cuenta asociada, debes validar su email.
+#     - El usuario te proporcionara un email.
+#     - Tú debes utilizar la tool "send_email_verification_code" para enviar un codigo de verificación al email del usuario.
+#     - El usuario te proporcionara un codigo de verificación.
+#     - Debes utilizar la tool "verify_email_verification_code" para verificar si el codigo de verificación es valido.
+
+# """
+
+async def prompt(state: State) -> list[AnyMessage]:  
+    phone_number = state["phone_number"]
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{BACKEND_URL}/users/phone/{phone_number}", timeout=5.0)
+        
+            if response.status_code == 404:
+                user = None
+            else:
+                user = response.json()
+    except Exception as e:
+        print(f"\n\Error: {e}\n\n")
+        user = None
+
+    print(f"\n\nUser: {user}\n\n")
+
+    system_msg = f"""
 Eres un asistente util para ayudar a un usuario.
 
-Cuando el usuario te envie el primer mensaje, debes utilizar la tool "get_user_info" para obtener la información del usuario.
+"""
 
-si el usuario no tiene una cuenta asociada, debes validar su email.
+    if not user:
+        system_msg += """
+El usuario no tiene una cuenta asociada, debes validar su email.
     - El usuario te proporcionara un email.
     - Tú debes utilizar la tool "send_email_verification_code" para enviar un codigo de verificación al email del usuario.
     - El usuario te proporcionara un codigo de verificación.
     - Debes utilizar la tool "verify_email_verification_code" para verificar si el codigo de verificación es valido.
-
+"""
+    else:
+        system_msg += f"""
+El usuario tiene una cuenta asociada, esta es la información del usuario:
+{user}
 """
 
-user_info = {
-    "email": "santiagopedemonte02@gmail.com",
-    "full_name": "Santiago Pedemonte",
-    "given_name": "Santiago",
-    "family_name": "Pedemonte",
-    "current_balance": 1000000,
-    "lasts_movements": [
-        {
-            "date": "2025-01-01",
-            "amount": 1000000,
-            "type": "deposit",
-        },
-        {
-            "date": "2025-01-01",
-            "amount": 1000000,
-            "type": "withdraw",
-        },
-        {
-            "date": "2025-01-01",
-            "amount": 1000000,
-            "type": "transfer",
-        },
-    ],
-    "role": "user",
-}
+    return [{"role": "system", "content": system_msg}] + state["messages"]
 
 items = {
     "item1": {
