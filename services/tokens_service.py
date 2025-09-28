@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.token_models import TokenBlocklist, TokenType
 
-
 load_dotenv()
 
 
@@ -109,6 +108,16 @@ class TokenService:
             expires_delta = timedelta(minutes=EMAIL_TOKEN_EXPIRE_MINUTES)
         to_encode = self._with_standard_claims(data, token_type="email_verified", exp_delta=expires_delta)
         return jwt.encode(to_encode, self.sercret, algorithm=self.algorithm)
+
+
+    def create_phone_number_verification_code(self, data: dict) -> str:
+        # TODO: Create a token for the phone number verification
+        return '123456'
+
+    def validate_phone_number_verification_code(self, email: str, token: str) -> dict:
+        if token == '123456':
+            return True
+        return False
 
     # ==================== TOKEN VALIDATION ====================
     def validate_access_token(self, token_str: str) -> dict:

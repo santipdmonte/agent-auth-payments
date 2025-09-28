@@ -65,3 +65,39 @@ def send_verification_email(email: str, token: str):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Email failed: {str(e)}")
+
+
+def send_phone_number_verification_email(email: str, token: str):
+    try:
+        # Create the email content (plain + HTML alternative)
+        message = MIMEMultipart("alternative")
+        message["From"] = SMTP_USER
+        message["To"] = email
+        message["Subject"] = f"Welcome! Verify your phone number"
+        message["Reply-To"] = SMTP_REPLY_TO
+
+        verification_token = token
+
+        plain_text_body = "Your verification token is: " + verification_token
+
+        html_body = (
+            f"<html><body>"
+            f"<p>Your verification token is: {verification_token}</p>"
+            f"</body></html>"
+        )
+
+        message.attach(MIMEText(plain_text_body, "plain"))
+        message.attach(MIMEText(html_body, "html"))
+
+        # Connect to SMTP server
+        context = ssl.create_default_context(cafile=certifi.where())
+        server = smtplib.SMTP(SMTP_SERVER, int(SMTP_PORT) if SMTP_PORT else 587)
+        server.starttls(context=context)
+        server.login(SMTP_USER, SMTP_PASSWORD)
+
+        # Send email
+        server.sendmail(SMTP_USER, email, message.as_string())
+        server.quit()
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email failed: {str(e)}")

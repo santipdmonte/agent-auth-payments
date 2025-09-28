@@ -125,3 +125,33 @@ class UserSocialAccount(Base):
     def update_last_used(self) -> None:
         """Actualizar último uso."""
         self.last_used = datetime.now(timezone.utc)
+
+
+class UserPhone(Base):
+    """Modelo de teléfono de usuario."""
+    
+    __tablename__ = "user_phones"
+    
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid.uuid4, index=True, nullable=False)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), 
+        server_default=func.now(),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False
+    )
+
+    user: Mapped["User"] = relationship("User", back_populates="phones")
+
+    __table_args__ = (
+        UniqueConstraint("phone", name="uq_phone"),
+        Index("idx_phone_lookup", "phone"),
+    )
